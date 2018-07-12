@@ -32,6 +32,7 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.zip.GZIPInputStream;
 
+import it.unimi.dsi.sux4j.util.ByteBufferPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -112,6 +113,7 @@ public class LcpMonotoneMinimalPerfectHashFunction<T> extends AbstractHashFuncti
 		protected File tempDir;
 		/** Whether {@link #build()} has already been called. */
 		protected boolean built;
+		protected ByteBufferPool byteBufferPool;
 
 		/** Specifies the keys to hash.
 		 *
@@ -168,6 +170,11 @@ public class LcpMonotoneMinimalPerfectHashFunction<T> extends AbstractHashFuncti
 			return this;
 		}
 
+        public Builder<T> byteBufferPool(final ByteBufferPool byteBufferPool) {
+            this.byteBufferPool = byteBufferPool;
+            return this;
+        }
+
 		/** Builds an LCP monotone minimal perfect hash function.
 		 *
 		 * @return an {@link LcpMonotoneMinimalPerfectHashFunction} instance with the specified parameters.
@@ -176,7 +183,10 @@ public class LcpMonotoneMinimalPerfectHashFunction<T> extends AbstractHashFuncti
 		public LcpMonotoneMinimalPerfectHashFunction<T> build() throws IOException {
 			if (built) throw new IllegalStateException("This builder has been already used");
 			built = true;
-			return new LcpMonotoneMinimalPerfectHashFunction<>(keys, numKeys, transform, signatureWidth, tempDir);
+			if (byteBufferPool == null) {
+			    byteBufferPool = new ByteBufferPool();
+            }
+			return new LcpMonotoneMinimalPerfectHashFunction<>(keys, numKeys, transform, signatureWidth, tempDir, byteBufferPool);
 		}
 	}
 
@@ -190,7 +200,7 @@ public class LcpMonotoneMinimalPerfectHashFunction<T> extends AbstractHashFuncti
 	 * @param tempDir a temporary directory for the store files, or {@code null} for the standard temporary directory.
 	 */
 	@SuppressWarnings("unused")
-	protected LcpMonotoneMinimalPerfectHashFunction(final Iterable<? extends T> keys, final long numKeys, final TransformationStrategy<? super T> transform, final int signatureWidth, final File tempDir) throws IOException {
+	protected LcpMonotoneMinimalPerfectHashFunction(final Iterable<? extends T> keys, final long numKeys, final TransformationStrategy<? super T> transform, final int signatureWidth, final File tempDir, final ByteBufferPool byteBufferPool) throws IOException {
 		final ProgressLogger pl = new ProgressLogger(LOGGER);
 		pl.displayLocalSpeed = true;
 		pl.displayFreeMemory = true;
@@ -238,7 +248,7 @@ public class LcpMonotoneMinimalPerfectHashFunction<T> extends AbstractHashFuncti
 		pl.expectedUpdates = n;
 
 		@SuppressWarnings("resource")
-		final ChunkedHashStore<BitVector> chunkedHashStore = new ChunkedHashStore<>(TransformationStrategies.identity(), tempDir, pl);
+		final ChunkedHashStore<BitVector> chunkedHashStore = new ChunkedHashStore<>(TransformationStrategies.identity(), tempDir, 0, pl, byteBufferPool);
 		chunkedHashStore.reset(Util.randomSeed());
 
 		pl.start("Scanning collection...");
@@ -418,7 +428,8 @@ public class LcpMonotoneMinimalPerfectHashFunction<T> extends AbstractHashFuncti
 				: utf32
 					? TransformationStrategies.prefixFreeUtf32()
 					: TransformationStrategies.prefixFreeUtf16();
-		BinIO.storeObject(new LcpMonotoneMinimalPerfectHashFunction<CharSequence>(collection, -1, transformationStrategy, signatureWidth, tempDir), functionName);
+		final ByteBufferPool byteBufferPool = new ByteBufferPool();
+		BinIO.storeObject(new LcpMonotoneMinimalPerfectHashFunction<CharSequence>(collection, -1, transformationStrategy, signatureWidth, tempDir, byteBufferPool), functionName);
 		LOGGER.info("Completed.");
 	}
 }
